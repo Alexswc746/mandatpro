@@ -2030,7 +2030,9 @@ function openDetClient(id){
         <div class="bloc-actions">
           <button class="ba ba-pri" onclick="toast(' Appel en cours','ok')"> Appeler ce client</button>
           <button class="ba ba-sec" onclick="openMsg('client','${id}')"> Message de recontact</button>
-          <button class="ba ba-ghost" onclick="openAvisModal('${id}')"> ${c.avis?'Mettre à jour l\'avis':'Ajouter avis de valeur'}</button>
+          <button class="ba ba-orange" onclick="openOffre('${id}')"> Proposer une offre</button>
+          <button class="ba ba-ghost" onclick="openNego('${id}')"> Proposer une condition</button>
+          <button class="ba" style="background:var(--cream);border:1px solid var(--border);color:var(--ink)" onclick="openAvisModal('${id}')"> ${c.avis?'Mettre à jour l\'avis':'Ajouter avis de valeur'}</button>
         </div>
       </div>
     </div>
@@ -2108,8 +2110,6 @@ function openDetProspect(id){
         <div class="bloc-actions">
           <button class="ba ba-pri" onclick="toast('Appel en cours','ok')"> Appeler ce prospect</button>
           <button class="ba ba-sec" onclick="openMsg('prospect','${id}')"> Relancer le projet</button>
-          <button class="ba ba-orange" onclick="openOffre('${id}')"> Proposer une offre</button>
-          <button class="ba ba-ghost" onclick="openNego('${id}')"> Proposer une condition</button>
         </div>
 
         <!-- ACTIONS SECONDAIRES -->
@@ -2574,10 +2574,10 @@ let currentOffreType = null
 let currentNegoType = null
 
 const OFFRE_MSGS = {
-  diagnostics: (fn,city) => `Bonjour ${fn},\n\nJe reviens vers vous avec une proposition concrète.\n\nDans le cadre de notre accompagnement, je vous offre la prise en charge complète des diagnostics obligatoires (DPE, électricité, gaz) pour votre bien à ${city}.\n\nCela représente un gain de temps et de budget non négligeable pour préparer la mise en vente dans les meilleures conditions.\n\nJe reste disponible pour en discuter.\n\nBien cordialement,`,
-  photos: (fn,city) => `Bonjour ${fn},\n\nJe voulais vous faire une proposition pour valoriser votre bien à ${city}.\n\nJe vous offre un reportage photo professionnel inclus dans notre mandat. Des photos de qualité font toute la différence pour attirer les bons acheteurs rapidement.\n\nN'hésitez pas à me contacter si vous souhaitez en savoir plus.\n\nBien cordialement,`,
-  pack: (fn,city) => `Bonjour ${fn},\n\nPour votre bien à ${city}, je vous propose notre pack marketing complet : diffusion sur tous les portails premium, réseaux sociaux, et communication ciblée — tout inclus dans le mandat, sans frais supplémentaires.\n\nC'est la formule qui maximise la visibilité et réduit le délai de vente.\n\nJe serais ravi d'en discuter avec vous.\n\nBien cordialement,`,
-  visite360: (fn,city) => `Bonjour ${fn},\n\nPour mettre en valeur votre bien à ${city}, je vous propose l'ajout d'une visite virtuelle 360° et d'un survol drone — inclus dans notre mandat.\n\nCes outils attirent en moyenne 3x plus de visites qualifiées et permettent aux acheteurs de se projeter avant même de se déplacer.\n\nJe reste à votre disposition.\n\nBien cordialement,`,
+  diagnostics: (fn,city) => `Bonjour ${fn},\n\nDans le cadre d'un futur projet de vente, je vous propose la prise en charge complète des diagnostics obligatoires (DPE, électricité, gaz) pour votre bien à ${city||'votre secteur'}.\n\nCela vous permettrait de mettre en vente rapidement, sans avance de frais.\n\nJe reste disponible pour en discuter sans engagement.\n\nBien cordialement,`,
+  photos: (fn,city) => `Bonjour ${fn},\n\nSi vous envisagez de mettre en vente votre bien à ${city||'votre secteur'}, je vous propose un reportage photo professionnel inclus dans le mandat.\n\nDes photos de qualité font toute la différence pour attirer les bons acheteurs rapidement et vendre au meilleur prix.\n\nN'hésitez pas à me contacter.\n\nBien cordialement,`,
+  pack: (fn,city) => `Bonjour ${fn},\n\nPour la vente de votre bien à ${city||'votre secteur'}, je vous propose notre pack marketing complet : diffusion sur tous les portails premium, réseaux sociaux et communication ciblée — tout inclus dans le mandat, sans frais supplémentaires.\n\nC'est la formule qui maximise la visibilité et réduit le délai de vente.\n\nJe suis disponible pour en discuter.\n\nBien cordialement,`,
+  visite360: (fn,city) => `Bonjour ${fn},\n\nPour valoriser votre bien à ${city||'votre secteur'}, je vous propose l'ajout d'une visite virtuelle 360° et d'un survol drone — inclus dans notre mandat.\n\nCes outils attirent en moyenne 3x plus de visites qualifiées et permettent aux acheteurs de se projeter avant même de se déplacer.\n\nJe reste à votre disposition.\n\nBien cordialement,`,
 }
 
 const NEGO_MSGS = {
