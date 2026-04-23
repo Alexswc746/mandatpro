@@ -1469,7 +1469,9 @@ function supabaseToClient(c){
     notes: c.notes||'', scoreReasons: c.score_reasons||[],
     avis: c.avis_prix ? {
       prix: c.avis_prix, fourchetteBas: c.avis_fourchette_bas,
-      fourchetteHaut: c.avis_fourchette_haut, date: c.avis_date,
+      fourchetteHaut: c.avis_fourchette_haut,
+      dateISO: c.avis_date||null,
+      date: c.avis_date ? new Date(c.avis_date).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}) : '',
       source: c.avis_source||'Manuel'
     } : null,
     dvf: c.dvf_est ? {
@@ -1528,7 +1530,7 @@ async function saveClient(c){
     last_date: c.lastDate||null, last_note: c.lastNote||null, notes: c.notes||null,
     avis_prix: c.avis?.prix||null, avis_fourchette_bas: c.avis?.fourchetteBas||null,
     avis_fourchette_haut: c.avis?.fourchetteHaut||null,
-    avis_date: c.avis?.date||null, avis_source: c.avis?.source||null,
+    avis_date: c.avis?.dateISO||c.avis?.date||null, avis_source: c.avis?.source||null,
     dvf_est: c.dvf?.est||null, dvf_gain_pct: c.dvf?.gainPct||null,
     dvf_gain_eur: c.dvf?.gainEur||null, dvf_opp: c.dvf?.opp||null,
     dvf_conf: c.dvf?.conf||null, dvf_date: c.dvf?.date||null,
@@ -2971,15 +2973,21 @@ function saveAvis(){
   const prix=parseInt(document.getElementById('av-prix').value)
   if(!prix){toast('Le prix estime est obligatoire','er');return}
   const c=CLIENTS[id];if(!c)return
+
+  // Date — priorité au champ date saisi, sinon aujourd'hui
+  const avDateInput = document.getElementById('av-date').value // format YYYY-MM-DD
+  const avDateISO = avDateInput || new Date().toISOString().split('T')[0]
+  const avDateFR = new Date(avDateISO).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'})
+
   c.avis={
     prix,
     fourchetteBas:parseInt(document.getElementById('av-bas').value)||Math.round(prix*0.95),
     fourchetteHaut:parseInt(document.getElementById('av-haut').value)||Math.round(prix*1.05),
-    date:new Date().toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}),
+    date: avDateFR,      // affichage
+    dateISO: avDateISO,  // sauvegarde Supabase
     source:document.getElementById('av-source').value||'Manuel',
     pdf:null
   }
-  // Recalculer le score avec le nouvel avis de valeur
   const result = calcClientScore(c)
   const oldScore = c.score
   c.score = result.total
@@ -2988,9 +2996,10 @@ function saveAvis(){
   const diff = result.total - oldScore
   const diffStr = diff > 0 ? ' +'+diff+' pts' : ''
   toast('Avis de valeur enregistre'+diffStr,'ok')
-  saveClient(c) // Sauvegarder en base
+  saveClient(c)
   openDetClient(id)
   renderClients()
+  renderDashboard()
 }
 
 //  AJOUT CLIENT 
