@@ -506,7 +506,7 @@ button{font-family:var(--sans);cursor:pointer}
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;gap:12px">
         <div class="v-head" style="margin:0">
           <h1>Clients</h1>
-          <p>6 clients · 4 avec estimation active</p>
+          <p id="clients-sub">0 client</p>
         </div>
         <div style="display:flex;gap:8px;flex-shrink:0;margin-top:6px">
           <button class="btn-sec" onclick="openCampagneClients()">📨 Créer une campagne</button>
@@ -542,7 +542,7 @@ button{font-family:var(--sans);cursor:pointer}
         <div class="hpb-pulse"></div>
         <div style="flex:1">
           <div class="hpb-text">🔥 2 prospects chauds détectés</div>
-          <div class="hpb-sub">Lucas Bernard (clic email +40pts) · Julie Garnier (ouvertures multiples)</div>
+          <div class="hpb-sub" id="hpb-sub-text">Aucun prospect chaud pour le moment</div>
         </div>
         <button class="hpb-cta" onclick="openEnvoiGroupe()">Créer une campagne →</button>
       </div>
@@ -584,26 +584,26 @@ button{font-family:var(--sans);cursor:pointer}
       </div>
 
       <!-- KPIs globaux -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px" id="camp-kpis">
         <div style="background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:16px 18px">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Campagnes envoyées</div>
-          <div style="font-family:var(--serif);font-size:28px;font-weight:700">4</div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Campagnes envoyees</div>
+          <div style="font-family:var(--serif);font-size:28px;font-weight:400" id="kpi-camp-nb">0</div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px">ce mois-ci</div>
         </div>
         <div style="background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:16px 18px">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Emails envoyés</div>
-          <div style="font-family:var(--serif);font-size:28px;font-weight:700">38</div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Emails envoyes</div>
+          <div style="font-family:var(--serif);font-size:28px;font-weight:400" id="kpi-camp-envois">0</div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px">total ce mois</div>
         </div>
         <div style="background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:16px 18px">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Taux d'ouverture</div>
-          <div style="font-family:var(--serif);font-size:28px;font-weight:700;color:var(--green-mid)">68%</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">26 ouvertures</div>
+          <div style="font-family:var(--serif);font-size:28px;font-weight:400;color:var(--green-mid)" id="kpi-camp-ouv">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px" id="kpi-camp-ouv-sub">aucune campagne</div>
         </div>
         <div style="background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:16px 18px">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Taux de clic</div>
-          <div style="font-family:var(--serif);font-size:28px;font-weight:700;color:var(--green-mid)">21%</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">8 clics</div>
+          <div style="font-family:var(--serif);font-size:28px;font-weight:400;color:var(--green-mid)" id="kpi-camp-clic">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px" id="kpi-camp-clic-sub">aucune campagne</div>
         </div>
       </div>
 
@@ -756,7 +756,7 @@ button{font-family:var(--sans);cursor:pointer}
         <div style="height:8px;background:var(--cream);border-radius:4px;overflow:hidden;margin-bottom:6px">
           <div style="width:34.2%;height:100%;background:var(--mint);border-radius:4px"></div>
         </div>
-        <div style="font-size:12px;color:var(--muted)">658 contacts disponibles · 6 clients · 6 prospects</div>
+        <div style="font-size:12px;color:var(--muted)" id="settings-quota">0 client · 0 prospect</div>
       </div>
 
     </div><!-- /view-settings -->
@@ -1655,6 +1655,14 @@ function sortClients(by){
 function renderClients(){
   const el=document.getElementById('cl-list');if(!el)return
   let data=Object.values(CLIENTS)
+
+  // Mettre a jour le sous-titre et les paramètres
+  const nbClients = data.length
+  const nbAvis = data.filter(c=>c.avis).length
+  const sub = document.getElementById('clients-sub')
+  if(sub) sub.textContent = nbClients+' client'+(nbClients>1?'s':'')+(nbAvis>0?' · '+nbAvis+' avec estimation active':'')
+  const quota = document.getElementById('settings-quota')
+  if(quota) quota.textContent = nbClients+' client'+(nbClients>1?'s':'')+' · '+PROSPECTS.length+' prospect'+(PROSPECTS.length>1?'s':'')
 
   // Tri
   data.sort((a,b)=>{
@@ -2917,6 +2925,22 @@ const CAMP_HISTORIQUE = []
 
 function renderCampagnes(){
   const el=document.getElementById('camp-historique');if(!el)return
+
+  // Calculer KPIs depuis les vraies données
+  const envoyees = CAMP_HISTORIQUE.filter(c=>c.statut==='envoye')
+  const totalEnvois = envoyees.reduce((s,c)=>s+(c.envois||0),0)
+  const totalOuv = envoyees.reduce((s,c)=>s+(c.ouvertures||0),0)
+  const totalClic = envoyees.reduce((s,c)=>s+(c.clics||0),0)
+  const tauxOuv = totalEnvois>0 ? Math.round(totalOuv/totalEnvois*100) : null
+  const tauxClic = totalEnvois>0 ? Math.round(totalClic/totalEnvois*100) : null
+
+  const el2 = (id) => document.getElementById(id)
+  if(el2('kpi-camp-nb')) el2('kpi-camp-nb').textContent = envoyees.length
+  if(el2('kpi-camp-envois')) el2('kpi-camp-envois').textContent = totalEnvois
+  if(el2('kpi-camp-ouv')) el2('kpi-camp-ouv').textContent = tauxOuv!==null ? tauxOuv+'%' : '—'
+  if(el2('kpi-camp-ouv-sub')) el2('kpi-camp-ouv-sub').textContent = totalOuv>0 ? totalOuv+' ouvertures' : 'aucune campagne'
+  if(el2('kpi-camp-clic')) el2('kpi-camp-clic').textContent = tauxClic!==null ? tauxClic+'%' : '—'
+  if(el2('kpi-camp-clic-sub')) el2('kpi-camp-clic-sub').textContent = totalClic>0 ? totalClic+' clics' : 'aucune campagne'
   el.innerHTML=CAMP_HISTORIQUE.map(c=>{
     const isPlanif=c.statut==='planifie'
     const tauxOuv=c.ouvertures?Math.round((c.ouvertures/c.envois)*100):null
