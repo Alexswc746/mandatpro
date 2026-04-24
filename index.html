@@ -1387,7 +1387,10 @@ async function doLogout(){
   currentUser = null
   currentUserId = null
   document.getElementById('login-page').style.display = 'flex'
-  document.getElementById('app').style.display = 'none'
+  const nav = document.getElementById('nav')
+  if(nav) nav.style.display = 'none'
+  const appWrap = document.querySelector('.app-wrap')
+  if(appWrap) appWrap.style.display = 'none'
 }
 
 // ── CHARGEMENT DONNÉES ──────────────────────────────────────────
