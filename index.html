@@ -801,6 +801,8 @@ button{font-family:var(--sans);cursor:pointer}
 
       <!-- Message personnalisé -->
       <div id="msg-custom-panel" style="display:none">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Sujet de l'email</div>
+        <input id="camp-sujet" placeholder="Ex: Le marché immobilier de votre secteur" style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:9px;font-size:13px;color:var(--ink);outline:none;font-family:var(--sans);margin-bottom:12px">
         <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Votre message</div>
         <textarea id="mm-custom" rows="12" style="width:100%;padding:14px;border:1px solid var(--border);border-radius:9px;font-size:13px;line-height:1.75;color:var(--ink);resize:vertical;outline:none;font-family:var(--sans);transition:all .15s" placeholder="Écrivez votre message personnalisé…"></textarea>
         <div style="display:flex;justify-content:flex-end;margin-top:6px">
@@ -3719,54 +3721,102 @@ function selectTemplate(id){
   document.getElementById('camp-next2').style.opacity='1'
 }
 
-function envoyerCampagne(){
-  const msg=document.getElementById('camp-msg').value.trim()
-  if(!msg){toast('Le message ne peut pas etre vide','er');return}
+async function envoyerCampagne(){
+  const msg = document.getElementById('camp-msg').value.trim()
+  if(!msg){ toast('Le message ne peut pas etre vide','er'); return }
 
-  const cible=campState.cible
-  let count=0
-  if(cible==='chaud_c')  count=Object.values(CLIENTS).filter(c=>c.score>=70).length
-  else if(cible==='tiede_c') count=Object.values(CLIENTS).filter(c=>c.score>=40&&c.score<70).length
-  else if(cible==='froid_c') count=Object.values(CLIENTS).filter(c=>c.score<40).length
-  else if(cible==='tous_c')  count=Object.values(CLIENTS).length
-  else if(cible==='tous_p')  count=PROSPECTS.length
-  else if(cible==='inactif') count=PROSPECTS.filter(p=>p.statut==='inactif'&&p.emailCommercial===true).length
-  else count=PROSPECTS.filter(p=>p.niveau===cible).length
+  const sujet = document.getElementById('camp-sujet')?.value?.trim() || 'Un message de votre conseiller immobilier'
+  const cible = campState.cible
+  const tmpl = CAMP_TEMPLATES.find(t=>t.id===campState.templateId)
+  const labels = {chaud:'Prospects chauds',tiede:'Prospects tièdes',froid:'Prospects froids',tous_p:'Tous les prospects',chaud_c:'Clients chauds',tiede_c:'Clients tièdes',froid_c:'Clients froids',tous_c:'Tous les clients',inactif:'Inactifs'}
 
-  const tmpl=CAMP_TEMPLATES.find(t=>t.id===campState.templateId)
-  const labels={chaud:'Prospects chauds',tiede:'Prospects tièdes',froid:'Prospects froids',tous_p:'Tous les prospects',chaud_c:'Clients chauds',tiede_c:'Clients tièdes',froid_c:'Clients froids',tous_c:'Tous les clients'}
+  // Construire la liste des destinataires
+  let personnes = []
+  if(cible==='chaud_c')  personnes = Object.values(CLIENTS).filter(c=>c.score>=70)
+  else if(cible==='tiede_c') personnes = Object.values(CLIENTS).filter(c=>c.score>=40&&c.score<70)
+  else if(cible==='froid_c') personnes = Object.values(CLIENTS).filter(c=>c.score<40)
+  else if(cible==='tous_c')  personnes = Object.values(CLIENTS)
+  else if(cible==='tous_p')  personnes = PROSPECTS
+  else if(cible==='inactif') personnes = PROSPECTS.filter(p=>p.statut==='inactif'&&p.emailCommercial===true)
+  else personnes = PROSPECTS.filter(p=>p.niveau===cible)
 
-  const isPlanif=sendMode==='later'
-  const now=new Date()
-  const dateStr=now.toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'})
-  const heureStr=now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}).replace(':','h')
+  // Filtrer ceux qui ont un email
+  const avecEmail = personnes.filter(p => p.email && p.email.trim())
+  const sansEmail = personnes.length - avecEmail.length
 
-  // Ajoute à l'historique
-  CAMP_HISTORIQUE.unshift({
-    id:'c'+Date.now(),
-    date: isPlanif ? document.getElementById('planif-date').value.split('-').reverse().join(' ').replace(/(\d+) (\d+) (\d+)/,(_,d,m,y)=>d+' '+['jan.','fev.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','dec.'][parseInt(m)-1]+' '+y) : dateStr,
-    heure: isPlanif ? document.getElementById('planif-heure').value : heureStr,
-    cible: labels[cible]||cible,
-    type: tmpl?.label||'Message',
-    envois: count,
-    ouvertures: isPlanif?null:0,
-    clics: isPlanif?null:0,
-    statut: isPlanif?'planifie':'envoye',
-    destinataires: []
-  })
-
-  closeModal('modal-campagne')
-
-  if(isPlanif){
-    const date=document.getElementById('planif-date').value
-    const heure=document.getElementById('planif-heure').value
-    toast(` Campagne planifiee le ${date} à ${heure}  ${count} destinataire${count>1?'s':''}`, 'ok')
-  } else {
-    toast(` Campagne envoyee à ${count} destinataire${count>1?'s':''} `, 'ok')
+  if(avecEmail.length === 0){
+    toast('Aucun destinataire avec une adresse email','er')
+    return
   }
 
-  // Rafraîchit l'historique si on est sur l'onglet campagnes
-  if(document.getElementById('view-campagnes')?.classList.contains('on')) renderCampagnes()
+  const isPlanif = sendMode === 'later'
+
+  if(isPlanif){
+    // Planification — on enregistre sans envoyer
+    const date = document.getElementById('planif-date').value
+    const heure = document.getElementById('planif-heure').value
+    CAMP_HISTORIQUE.unshift({
+      id:'c'+Date.now(), date, heure,
+      cible: labels[cible]||cible, type: tmpl?.label||'Message',
+      envois: avecEmail.length, ouvertures: null, clics: null, statut:'planifie'
+    })
+    closeModal('modal-campagne')
+    toast('Campagne planifiée le '+date+' à '+heure+' — '+avecEmail.length+' destinataire'+(avecEmail.length>1?'s':''), 'ok')
+    renderCampagnes()
+    return
+  }
+
+  // Envoi immédiat via Brevo
+  const btn = document.getElementById('camp-send-btn')
+  if(btn){ btn.disabled=true; btn.textContent='Envoi en cours…' }
+  closeModal('modal-campagne')
+  toast('Envoi de '+avecEmail.length+' email'+(avecEmail.length>1?'s':'')+' via Brevo…','ok')
+
+  try {
+    const destinataires = avecEmail.map(p => ({
+      email: p.email.trim(),
+      nom: p.fn+' '+p.ln,
+      prenom: p.fn
+    }))
+
+    const response = await fetch('/api/brevo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        destinataires,
+        sujet,
+        message: msg,
+        expediteur_nom: 'Alex Escudier'
+      })
+    })
+
+    const data = await response.json()
+
+    if(data.succes > 0){
+      // Enregistrer dans l'historique
+      const now = new Date()
+      const dateStr = now.toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'})
+      const heureStr = now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}).replace(':','h')
+      CAMP_HISTORIQUE.unshift({
+        id:'c'+Date.now(), date:dateStr, heure:heureStr,
+        cible:labels[cible]||cible, type:tmpl?.label||'Message',
+        envois:data.succes, ouvertures:0, clics:0, statut:'envoye'
+      })
+      saveCampagne({ cible, mode:'brevo', msg, envois:data.succes, statut:'envoye', dateEnvoi:now.toISOString(), heureEnvoi:heureStr })
+      let msg2 = data.succes+' email'+(data.succes>1?'s':'')+' envoyé'+(data.succes>1?'s':'')+' avec succès'
+      if(data.erreurs > 0) msg2 += ' ('+data.erreurs+' échec'+(data.erreurs>1?'s':'')+')'
+      if(sansEmail > 0) msg2 += ' · '+sansEmail+' sans email ignoré'+(sansEmail>1?'s':'')
+      toast(msg2, 'ok')
+      renderCampagnes()
+    } else {
+      toast('Erreur lors de l\'envoi — vérifiez la configuration Brevo','er')
+    }
+
+  } catch(err) {
+    toast('Erreur réseau : '+err.message,'er')
+  }
+
+  if(btn){ btn.disabled=false; btn.textContent='Envoyer maintenant' }
 }
 let raisonState = { prospectId:null, raison:null, detail:null, emailCom:null }
 
