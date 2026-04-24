@@ -350,7 +350,7 @@ button{font-family:var(--sans);cursor:pointer}
           <line x1="1" y1="20" x2="8" y2="20" stroke="#52B788" stroke-width="2.5" stroke-linecap="round"/>
           <line x1="32" y1="20" x2="39" y2="20" stroke="#52B788" stroke-width="2.5" stroke-linecap="round"/>
         </svg>
-        <span>Mandat<em>Pro</em></span>
+        <span>Suivi<em>Immo</em></span>
       </div>
       <div class="login-tagline">L'outil qui te dit qui contacter aujourd'hui<br>pour générer des mandats.</div>
     </div>
@@ -383,7 +383,7 @@ button{font-family:var(--sans);cursor:pointer}
           <line x1="1" y1="20" x2="8" y2="20" stroke="#52B788" stroke-width="2.5" stroke-linecap="round"/>
           <line x1="32" y1="20" x2="39" y2="20" stroke="#52B788" stroke-width="2.5" stroke-linecap="round"/>
         </svg>
-        <span>Mandat<em>Pro</em></span>
+        <span>Suivi<em>Immo</em></span>
       </div>
       <h2>Bienvenue sur SuiviImmo</h2>
       <p>Savoir qui contacter, quand, et comment. Rien de plus.</p>
@@ -412,7 +412,7 @@ button{font-family:var(--sans);cursor:pointer}
       <line x1="1" y1="20" x2="8" y2="20" stroke="#0E4D2B" stroke-width="2.5" stroke-linecap="round"/>
       <line x1="32" y1="20" x2="39" y2="20" stroke="#0E4D2B" stroke-width="2.5" stroke-linecap="round"/>
     </svg>
-    <span class="logo-text">Mandat<em>Pro</em></span>
+    <span class="logo-text">Suivi<em>Immo</em></span>
   </div>
   <div class="nav-tabs">
     <button class="nt on"  onclick="show('dash')">Dashboard</button>
@@ -1294,6 +1294,42 @@ button{font-family:var(--sans);cursor:pointer}
 </div>
 
 <script>
+// ── UTILITAIRES DATE ───────────────────────────────────────────
+// Convertit n'importe quel format de date en YYYY-MM-DD pour Supabase
+// Retourne null si la date est invalide ou vide
+function cleanDate(d){
+  if(!d || d.trim() === '') return null
+  // Déjà au format YYYY-MM-DD
+  if(/^\d{4}-\d{2}-\d{2}$/.test(d.trim())) return d.trim()
+  // Format DD/MM/YYYY
+  if(/^\d{2}\/\d{2}\/\d{4}$/.test(d.trim())){
+    const [day,month,year] = d.split('/')
+    return `${year}-${month}-${day}`
+  }
+  // Essayer de parser avec Date
+  try {
+    const parsed = new Date(d)
+    if(!isNaN(parsed.getTime())){
+      return parsed.toISOString().split('T')[0]
+    }
+  } catch(e) {}
+  // Format français non parseable — retourner null
+  return null
+}
+
+// Date du jour au format YYYY-MM-DD
+function todayISO(){
+  return new Date().toISOString().split('T')[0]
+}
+
+// Formater une date ISO en français pour l'affichage
+function dateToFR(iso){
+  if(!iso) return ''
+  try {
+    return new Date(iso).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'})
+  } catch(e) { return iso }
+}
+
 // ── SUPABASE CONFIG ─────────────────────────────────────────────
 const SUPA_URL = 'https://xzkzzxgkoxipmkbxynfq.supabase.co'
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh6a3p6eGdrb3hpcG1rYnh5bmZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NDk0NjEsImV4cCI6MjA5MjQyNTQ2MX0.u_IzJKICYkLehAfdgEqw7RbtjqmBPvWGiJeuPwudfv4'
@@ -1522,7 +1558,8 @@ async function saveClient(c){
   const row = {
     user_id: currentUserId,
     prenom: c.fn, nom: c.ln, email: c.email||null, telephone: c.phone||null,
-    date_naissance: c.dateNaissance||null, date_acquisition: c.dateAcquisition||null,
+    date_naissance: cleanDate(c.dateNaissance),
+    date_acquisition: cleanDate(c.dateAcquisition),
     ville: c.city||null, surface: c.surface||null,
     annee_achat: c.year||null, prix_achat: c.purchase||null,
     fin_bail: c.finBail||null, score: c.score||0,
@@ -1531,7 +1568,8 @@ async function saveClient(c){
     last_date: c.lastDate||null, last_note: c.lastNote||null, notes: c.notes||null,
     avis_prix: c.avis?.prix||null, avis_fourchette_bas: c.avis?.fourchetteBas||null,
     avis_fourchette_haut: c.avis?.fourchetteHaut||null,
-    avis_date: c.avis?.dateISO||c.avis?.date||null, avis_source: c.avis?.source||null,
+    avis_date: cleanDate(c.avis?.dateISO||c.avis?.date)||null,
+    avis_source: c.avis?.source||null,
     dvf_est: c.dvf?.est||null, dvf_gain_pct: c.dvf?.gainPct||null,
     dvf_gain_eur: c.dvf?.gainEur||null, dvf_opp: c.dvf?.opp||null,
     dvf_conf: c.dvf?.conf||null, dvf_date: c.dvf?.date||null,
@@ -1551,15 +1589,6 @@ async function saveClient(c){
 
 async function saveProspect(p){
   if(!currentUserId){ console.error('saveProspect: pas de userId'); return }
-
-  // Nettoyer les dates — Supabase attend YYYY-MM-DD ou null
-  const cleanDate = (d) => {
-    if(!d) return null
-    // Si déjà au format YYYY-MM-DD
-    if(/^\d{4}-\d{2}-\d{2}$/.test(d)) return d
-    // Sinon retourner null (format français non accepté par Supabase)
-    return null
-  }
 
   const row = {
     user_id: currentUserId,
@@ -3289,7 +3318,7 @@ function renderDashboard(){
         const sc = c.score
         const scC = sc>=70?'#C0392B':sc>=40?'#C47B00':'#7A766E'
         const gainPct = c.avis ? +(((c.avis.prix-c.purchase)/c.purchase)*100).toFixed(1) : (c.dvf?c.dvf.gainPct:0)
-        return '<div class="c-row" onclick="openDetClient(\''+c.id+'\') " style="padding:12px 14px">'
+        return '<div class="c-row" onclick="show(\'clients\');setTimeout(()=>openDetClient(\''+c.id+'\'),50)" style="padding:12px 14px;cursor:pointer;transition:background .15s" onmouseover="this.style.background=\'var(--warm)\'" onmouseout="this.style.background=\'\'">'
           +'<div class="c-av" style="background:rgba('+hexToRgb(scC)+',.12);color:'+scC+'">'+c.init+'</div>'
           +'<div class="c-info"><div class="c-name">'+c.fn+' '+c.ln+'</div>'
           +'<div class="c-sub">'+c.city+(c.year?' · Achat '+c.year:'')+(gainPct>0?' · +'+gainPct+'%':'')+'</div></div>'
@@ -3311,7 +3340,7 @@ function renderDashboard(){
       dashProspects.innerHTML = top.map(p => {
         const sc = p.score
         const scC = sc>=70?'#C0392B':sc>=40?'#C47B00':'#7A766E'
-        return '<div class="c-row" onclick="openDetProspect(\''+p.id+'\')" style="padding:12px 14px">'
+        return '<div class="c-row" onclick="show(\'prospects\');setTimeout(()=>openDetProspect(\''+p.id+'\'),50)" style="padding:12px 14px;cursor:pointer;transition:background .15s" onmouseover="this.style.background=\'var(--warm)\'" onmouseout="this.style.background=\'\'">'
           +'<div class="c-av" style="background:rgba('+hexToRgb(scC)+',.12);color:'+scC+'">'+p.init+'</div>'
           +'<div class="c-info"><div class="c-name">'+p.fn+' '+p.ln+'</div>'
           +'<div class="c-sub">'+p.secteur+' · '+p.dateVisite+'</div></div>'
@@ -3357,7 +3386,7 @@ function renderDashboard(){
           +(c.finBail?'<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:100px;background:rgba(192,57,43,.25);color:#E87070">Fin de bail '+c.finBail+'</span>':'')
           +'<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:100px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.6)">Score '+c.score+'</span>'
           +'</div></div>'
-          +'<button onclick="event.stopPropagation();openMsg(\'client\',\''+c.id+'\')" style="background:var(--mint);color:var(--green);border:none;border-radius:8px;padding:7px 14px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">Envoyer message</button>'
+          +'<button onclick="event.stopPropagation();show(\'clients\');setTimeout(()=>{openDetClient(\''+c.id+'\');openMsg(\'client\',\''+c.id+'\')},50)" style="background:var(--mint);color:var(--green);border:none;border-radius:8px;padding:7px 14px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">Envoyer message</button>'
           +'</div>'
       }).join('')
       +'</div>'
@@ -3923,7 +3952,7 @@ function addProspect(){
     visite:document.getElementById('pf-bien').value||'',
     budget:document.getElementById('pf-budget').value||'',
     secteur:document.getElementById('pf-secteur').value||'',
-    dateVisite:document.getElementById('pf-date').value||new Date().toLocaleDateString('fr-FR'),
+    dateVisite: cleanDate(document.getElementById('pf-date').value) || todayISO(),
     projet:document.getElementById('pf-projet').value,
     statut:'invite',niveau:'froid',score:15,
     raisonNonAchat:null,raisonDetail:null,emailCommercial:null,
