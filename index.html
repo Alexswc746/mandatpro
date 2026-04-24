@@ -1936,11 +1936,14 @@ function openDetClient(id){
   setDetHeader(c.init,c.avCls,c.fn+' '+c.ln,c.city+'  '+c.surface+'m  Achete en '+c.year,sc,scC,scLbl)
 
   // Plus-value : avis de valeur en priorite, DVF en fallback
-  const prixRef = c.avis ? c.avis.prix : d.est
-  const gainEurRef = prixRef - c.purchase
-  const gainPctRef = c.purchase ? +((gainEurRef/c.purchase)*100).toFixed(1) : 0
+  // Si ni avis ni DVF réel — ne pas afficher de plus-value
+  const hasValidDvf = d.est && d.est > 0 && d.comp > 0
+  const hasValidAvis = c.avis && c.avis.prix && c.purchase
+  const prixRef = hasValidAvis ? c.avis.prix : (hasValidDvf ? d.est : 0)
+  const gainEurRef = prixRef && c.purchase ? prixRef - c.purchase : 0
+  const gainPctRef = c.purchase && prixRef ? +((gainEurRef/c.purchase)*100).toFixed(1) : 0
   const oppRef = gainPctRef>=20?OPP['tres fort']:gainPctRef>=15?OPP['fort']:gainPctRef>=10?OPP['interessant']:OPP['faible']
-  const gainW = Math.min(gainPctRef/20*100, 100)
+  const gainW = prixRef ? Math.min(Math.max(gainPctRef,0)/20*100, 100) : 0
 
   document.getElementById('det-body').innerHTML=`
     ${scoreExplainHTML(c.scoreReasons)}
@@ -1979,22 +1982,27 @@ function openDetClient(id){
         </div>
 
         <!-- Plus-value calculee sur la meilleure source -->
+        ${prixRef && c.purchase ? `
         <div style="display:flex;align-items:flex-start;gap:20px;margin-bottom:20px">
           <div style="flex:1">
-            <div class="bloc-lbl">Plus-value estimee ${c.avis?'(avis de valeur)':'(DVF)'}</div>
-            <div class="bloc-val" style="color:${oppRef.color}">+${fmt(gainEurRef)}</div>
-            <div class="bloc-sub">soit +${gainPctRef}% depuis l'achat en ${c.year}</div>
+            <div class="bloc-lbl">Plus-value estimee ${hasValidAvis?'(avis de valeur)':'(DVF)'}</div>
+            <div class="bloc-val" style="color:${oppRef.color}">${gainEurRef>=0?'+':''}${fmt(gainEurRef)}</div>
+            <div class="bloc-sub">soit ${gainPctRef>=0?'+':''}${gainPctRef}% depuis l'achat en ${c.year}</div>
           </div>
           <div class="bloc-gain" style="background:${oppRef.bg}">
-            <div class="bloc-gain-n" style="color:${oppRef.color}">+${gainPctRef}%</div>
-            <div style="font-size:10px;color:var(--muted);margin-top:4px">${c.avis?'Votre estimation':'Moyenne DVF'}</div>
+            <div class="bloc-gain-n" style="color:${oppRef.color}">${gainPctRef>=0?'+':''}${gainPctRef}%</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:4px">${hasValidAvis?'Votre estimation':'Moyenne DVF'}</div>
           </div>
         </div>
-
         <div style="margin-bottom:6px;display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--muted)">Niveau de plus-value</span><span style="font-weight:700;color:${oppRef.color}">${oppRef.desc}</span></div>
         <div class="prog-track"><div class="prog-fill" style="width:${gainW}%;background:${oppRef.color}"></div></div>
         <div class="prog-labels"><span>0%</span><span>10%</span><span>15%</span><span>20%+</span></div>
         <div style="height:14px"></div>
+        ` : `
+        <div style="background:var(--warm);border-radius:var(--r);padding:14px;font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.6">
+          Ajoutez un avis de valeur ou une adresse pour calculer le potentiel de plus-value.
+        </div>
+        `}
 
         ${c.avis?`
         <div class="bloc-meta">
@@ -3391,9 +3399,15 @@ async function fetchDVF(clientId, adresse, surface){
 
 async function rafraichirDVF(clientId){
   const c = CLIENTS[clientId]; if(!c) return
-  if(!c.adresse){ toast('Ajoutez d\'abord une adresse dans la fiche client','er'); return }
+  let adresse = c.adresse
+  if(!adresse){
+    adresse = prompt('Entrez l\'adresse complète du bien (ex: 12 rue Victor Hugo, Toulon) :')
+    if(!adresse) return
+    c.adresse = adresse.trim()
+    await saveClient(c)
+  }
   toast('Calcul DVF en cours…','ok')
-  await fetchDVF(clientId, c.adresse, c.surface)
+  await fetchDVF(clientId, adresse, c.surface)
   openDetClient(clientId)
 }
 
