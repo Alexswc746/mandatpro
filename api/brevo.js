@@ -30,7 +30,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           sender: {
             name: expediteur_nom || 'Alex Escudier',
-            email: expediteur_email || 'contact@alexescudieriadimmobilier.fr'
+            email: expediteur_email || 'alex.escudier@suiviimmo.fr'
           },
           to: [{ 
             email: dest.email, 
