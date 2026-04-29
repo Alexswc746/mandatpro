@@ -78,7 +78,7 @@ export default async function handler(req, res) {
     const supaData = await supaRes.json()
 
     if (!supaRes.ok) {
-      return res.status(400).json({ error: supaData.message || 'Email déjà utilisé' })
+      return res.status(400).json({ error: supaData.message || supaData.msg || JSON.stringify(supaData) })
     }
 
     const userId = supaData.id
