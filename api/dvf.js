@@ -32,8 +32,8 @@ export default async function handler(req, res) {
     const surfNum = surface ? parseFloat(surface) : null
 
     // Étape 2 — Recherche par proximité GPS via Immo API
-    // Rayon de 500m autour du bien, type Appartement
-    const nearbyUrl = `https://immoapi.app/v1/mutations/nearby?lat=${lat}&lon=${lng}&radius=500&type_local=Appartement&limit=30`
+    // Rayon de 1500m autour du bien
+    const nearbyUrl = `https://immoapi.app/v1/mutations/nearby?lat=${lat}&lon=${lng}&radius=1500&type_local=Appartement&limit=30`
     
     const dvfRes = await fetch(nearbyUrl, {
       headers: {
