@@ -31,8 +31,14 @@ export default async function handler(req, res) {
 
     const surfNum = surface ? parseFloat(surface) : null
 
+    // Pour Paris, Lyon, Marseille — normaliser le code commune
+    // Ces villes ont des codes d'arrondissement mais DVF utilise le code principal
+    let codeCommune = codeInsee
+    if(codeInsee.startsWith('751') || codeInsee === '75056') codeCommune = '75056' // Paris
+    if(codeInsee.startsWith('132')) codeCommune = '13055' // Marseille
+    if(codeInsee.startsWith('693')) codeCommune = '69123' // Lyon
+
     // Étape 2 — Recherche par proximité GPS via Immo API
-    // Rayon de 1500m autour du bien
     const nearbyUrl = `https://immoapi.app/v1/mutations/nearby?lat=${lat}&lon=${lng}&radius=1500&type_local=Appartement&limit=30`
     
     const dvfRes = await fetch(nearbyUrl, {
@@ -46,12 +52,16 @@ export default async function handler(req, res) {
 
     if (dvfRes.ok) {
       const dvfData = await dvfRes.json()
+      console.log('Immo API nearby response:', JSON.stringify(dvfData).substring(0, 300))
       mutations = dvfData.mutations || dvfData.results || dvfData || []
+    } else {
+      const errText = await dvfRes.text()
+      console.log('Immo API nearby error:', dvfRes.status, errText.substring(0, 200))
     }
 
     // Fallback — recherche par commune si pas assez de résultats GPS
     if (mutations.length < 3) {
-      const communeUrl = `https://immoapi.app/v1/mutations?code_commune=${codeInsee}&type_local=Appartement&limit=40`
+      const communeUrl = `https://immoapi.app/v1/mutations?code_commune=${codeCommune}&type_local=Appartement&limit=40`
       const communeRes = await fetch(communeUrl, {
         headers: {
           'Authorization': `Bearer ${IMMO_API_KEY}`,
@@ -60,7 +70,11 @@ export default async function handler(req, res) {
       })
       if (communeRes.ok) {
         const communeData = await communeRes.json()
+        console.log('Immo API commune response:', JSON.stringify(communeData).substring(0, 300))
         mutations = communeData.mutations || communeData.results || communeData || []
+      } else {
+        const errText = await communeRes.text()
+        console.log('Immo API commune error:', communeRes.status, errText.substring(0, 200))
       }
     }
 
