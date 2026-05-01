@@ -8,7 +8,6 @@ export default async function handler(req, res) {
   const { adresse, surface, type_local = 'Appartement' } = req.body
   if (!adresse) return res.status(400).json({ error: 'Adresse manquante' })
 
-  const DVF_SERVER = process.env.NEXT_PUBLIC_DVF_SERVER_URL || 'https://dvf-server.onrender.com'
   const surfNum = surface ? parseFloat(surface) : null
 
   try {
@@ -29,85 +28,80 @@ export default async function handler(req, res) {
     const ville = feature.properties.city
     const codePostal = feature.properties.postcode
 
-    // Étape 2 — Stats prix m² via notre serveur DVF (API officielle data.gouv.fr)
-    const statsUrl = `${DVF_SERVER}/dvf/stats?code_insee=${codeInsee}&type_local=${encodeURIComponent(type_local)}`
-    console.log('DVF stats URL:', statsUrl)
+    console.log('Geocodé:', ville, codeInsee)
 
-    const statsRes = await fetch(statsUrl)
-    console.log('DVF stats status:', statsRes.status)
+    // Étape 2 — DVF direct depuis data.gouv.fr (Vercel côté serveur, pas de CORS)
+    const dvfUrl = `https://api.data.gouv.fr/dvf/v1/geojson/?code_insee=${codeInsee}`
+    console.log('DVF URL:', dvfUrl)
 
-    if (statsRes.ok) {
-      const stats = await statsRes.json()
-      console.log('DVF stats:', JSON.stringify(stats))
+    let features = []
 
-      if (!stats.prix_m2?.median || stats.nb_mutations < 3) {
-        // Pas assez de données → essai par point GPS
-        const pointUrl = `${DVF_SERVER}/dvf/point?lat=${lat}&lon=${lng}&dist=1000`
-        const pointRes = await fetch(pointUrl)
+    const dvfRes = await fetch(dvfUrl, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(25000)
+    })
 
-        if (pointRes.ok) {
-          const pointData = await pointRes.json()
-          const features = (pointData.features || []).filter(f => {
-            const tl = f.properties?.type_local?.toLowerCase()
-            return tl === type_local.toLowerCase()
-          })
-
-          if (features.length >= 3) {
-            const prixM2List = features
-              .map(f => {
-                const val = f.properties?.valeur_fonciere
-                const surf = f.properties?.surface_reelle_bati
-                return surf && val ? val / surf : null
-              })
-              .filter(Boolean)
-              .sort((a, b) => a - b)
-
-            const median = prixM2List[Math.floor(prixM2List.length / 2)]
-            const avgM2 = Math.round(median)
-
-            return res.status(200).json({
-              dvf: {
-                avgM2,
-                medianM2: avgM2,
-                est: surfNum ? Math.round(avgM2 * surfNum) : null,
-                comp: features.length,
-                conf: 'indicative',
-                date: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
-                samples: []
-              },
-              geo: { lat, lng, ville, codePostal, codeInsee }
-            })
-          }
-        }
-
-        return res.status(200).json({
-          error: 'Données insuffisantes pour ce secteur',
-          dvf: null,
-          geo: { lat, lng, ville, codePostal, codeInsee }
-        })
+    if (dvfRes.ok) {
+      const dvfData = await dvfRes.json()
+      features = dvfData.features || []
+    } else {
+      // Fallback par GPS
+      const pointRes = await fetch(
+        `https://api.data.gouv.fr/dvf/v1/geojson/?lat=${lat}&lon=${lng}&dist=1000`,
+        { headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(25000) }
+      )
+      if (pointRes.ok) {
+        const pointData = await pointRes.json()
+        features = pointData.features || []
       }
+    }
 
-      const avgM2 = stats.prix_m2.median
-      const estValeur = (avgM2 && surfNum) ? Math.round(avgM2 * surfNum) : null
+    // Filtrer par type
+    const filtered = features.filter(f =>
+      f.properties?.type_local?.toLowerCase() === type_local.toLowerCase()
+    )
+    const source = filtered.length >= 3 ? filtered : features
 
+    if (source.length === 0) {
       return res.status(200).json({
-        dvf: {
-          avgM2,
-          medianM2: stats.prix_m2.median,
-          est: estValeur,
-          comp: stats.nb_mutations,
-          conf: stats.nb_mutations >= 10 ? 'bonne' : 'indicative',
-          date: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
-          samples: []
-        },
+        error: 'Aucune vente trouvée',
+        dvf: null,
         geo: { lat, lng, ville, codePostal, codeInsee }
       })
     }
 
-    throw new Error(`DVF server error: ${statsRes.status}`)
+    // Calculer prix/m²
+    const prixM2List = source
+      .map(f => {
+        const val = parseFloat(f.properties?.valeur_fonciere || 0)
+        const surf = parseFloat(f.properties?.surface_reelle_bati || 0)
+        return surf > 10 && val > 10000 ? val / surf : null
+      })
+      .filter(Boolean)
+      .sort((a, b) => a - b)
+
+    if (prixM2List.length === 0) {
+      return res.status(200).json({ error: 'Données insuffisantes', dvf: null, geo: { lat, lng, ville, codePostal, codeInsee } })
+    }
+
+    const avgM2 = Math.round(prixM2List[Math.floor(prixM2List.length / 2)])
+    const est = surfNum ? Math.round(avgM2 * surfNum) : null
+
+    console.log('DVF:', avgM2, '€/m² —', prixM2List.length, 'ventes')
+
+    return res.status(200).json({
+      dvf: {
+        avgM2, medianM2: avgM2, est,
+        comp: prixM2List.length,
+        conf: prixM2List.length >= 10 ? 'bonne' : 'indicative',
+        date: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
+        samples: []
+      },
+      geo: { lat, lng, ville, codePostal, codeInsee }
+    })
 
   } catch (err) {
-    console.log('DVF catch error:', err.message)
+    console.log('DVF error:', err.message)
     return res.status(200).json({ error: err.message, dvf: null })
   }
 }
