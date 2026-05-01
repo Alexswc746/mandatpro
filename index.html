@@ -1647,6 +1647,7 @@ function supabaseToClient(c){
       date: c.avis_date ? new Date(c.avis_date).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}) : '',
       source: c.avis_source||'Manuel'
     } : null,
+    adresse: c.adresse||'',
     dvf: c.dvf_est ? {
       est: c.dvf_est, gainPct: c.dvf_gain_pct||0,
       gainEur: c.dvf_gain_eur||0, opp: c.dvf_opp||'faible',
@@ -1706,6 +1707,7 @@ async function saveClient(c){
     avis_fourchette_haut: c.avis?.fourchetteHaut||null,
     avis_date: cleanDate(c.avis?.dateISO||c.avis?.date)||null,
     avis_source: c.avis?.source||null,
+    adresse: c.adresse||null,
     dvf_est: c.dvf?.est||null, dvf_gain_pct: c.dvf?.gainPct||null,
     dvf_gain_eur: c.dvf?.gainEur||null, dvf_opp: c.dvf?.opp||null,
     dvf_conf: c.dvf?.conf||null, dvf_date: c.dvf?.date||null,
