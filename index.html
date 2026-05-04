@@ -2257,6 +2257,7 @@ function openDetClient(id){
           <button class="ba" style="background:var(--cream);border:1px solid var(--border);color:var(--ink)" onclick="openAvisModal('${id}')"> ${c.avis?'Mettre à jour l\'avis':'Ajouter avis de valeur'}</button>
         </div>
         <div style="padding-top:10px;border-top:1px solid var(--border-light);margin-top:4px;display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="openEditClient('${id}')" style="background:var(--blue-bg);color:var(--blue);border:1px solid rgba(26,92,168,.2);padding:7px 14px;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s">✏️ Modifier la fiche</button>
           <button onclick="basculerClientProspect('${id}')" style="background:var(--warm);color:var(--muted);border:1px solid var(--border);padding:7px 14px;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s" onmouseover="this.style.background='var(--cream)'" onmouseout="this.style.background='var(--warm)'">↩ Basculer en prospect</button>
           <button onclick="supprimerClient('${id}')" style="background:var(--hot-bg);color:var(--hot);border:1px solid rgba(192,57,43,.2);padding:7px 14px;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s" onmouseover="this.style.background='#f5c6c3'" onmouseout="this.style.background='var(--hot-bg)'">🗑 Supprimer ce client</button>
         </div>
@@ -4228,6 +4229,74 @@ function toast(msg,type='ok'){
   tt=setTimeout(()=>el.style.display='none',3500)
 }
 
+
+// ── MODIFIER CLIENT ─────────────────────────────────────────────
+let currentEditClientId = null
+
+function openEditClient(id) {
+  const c = CLIENTS[id]; if(!c) return
+  currentEditClientId = id
+  document.getElementById('edit-client-sub').textContent = c.fn + ' ' + c.ln
+  document.getElementById('edit-fn').value = c.fn || ''
+  document.getElementById('edit-ln').value = c.ln || ''
+  document.getElementById('edit-em').value = c.email || ''
+  document.getElementById('edit-tel').value = c.phone || ''
+  document.getElementById('edit-city').value = c.city || ''
+  document.getElementById('edit-surface').value = c.surface || ''
+  document.getElementById('edit-purchase').value = c.purchase || ''
+  document.getElementById('edit-dacq').value = c.dateAcquisition || ''
+  document.getElementById('edit-adresse').value = c.adresse || ''
+  document.getElementById('edit-section').value = c.section_cadastrale || ''
+  document.getElementById('edit-ddn').value = c.dateNaissance || ''
+  document.getElementById('edit-bail').value = c.finBail || ''
+  document.getElementById('edit-notes').value = c.notes || ''
+  openModal('modal-edit-client')
+}
+
+async function saveEditClient() {
+  const id = currentEditClientId; if(!id) return
+  const c = CLIENTS[id]; if(!c) return
+
+  const fn = document.getElementById('edit-fn').value.trim()
+  const ln = document.getElementById('edit-ln').value.trim()
+  if(!fn || !ln) { toast('Prénom et nom obligatoires','er'); return }
+
+  c.fn = fn
+  c.ln = ln
+  c.init = (fn[0] + (ln[0]||'')).toUpperCase()
+  c.email = document.getElementById('edit-em').value.trim()
+  c.phone = document.getElementById('edit-tel').value.trim()
+  c.city = document.getElementById('edit-city').value.trim()
+  c.surface = parseInt(document.getElementById('edit-surface').value) || c.surface
+  c.purchase = parseInt(document.getElementById('edit-purchase').value) || c.purchase
+  c.dateAcquisition = document.getElementById('edit-dacq').value || c.dateAcquisition
+  c.year = c.dateAcquisition ? new Date(c.dateAcquisition).getFullYear() : c.year
+  c.adresse = document.getElementById('edit-adresse').value.trim()
+  c.section_cadastrale = document.getElementById('edit-section').value.trim()
+  c.dateNaissance = document.getElementById('edit-ddn').value || c.dateNaissance
+  c.finBail = document.getElementById('edit-bail').value.trim()
+  c.notes = document.getElementById('edit-notes').value.trim()
+
+  const result = calcClientScore(c)
+  c.score = result.total
+  c.scoreReasons = result.reasons
+
+  await saveClient(c)
+  closeModal('modal-edit-client')
+  toast('Fiche mise à jour ✓','ok')
+
+  // Relancer DVF si adresse ou section ont changé
+  const adresse = c.adresse || c.city
+  if(adresse && c.surface) {
+    toast('Recalcul DVF en cours…','ok')
+    await fetchDVF(id, adresse, c.surface)
+  }
+
+  renderClients()
+  renderDashboard()
+  openDetClient(id)
+}
+
 // -- INIT --
 document.addEventListener('DOMContentLoaded', function(){
   const now = new Date()
@@ -4237,5 +4306,44 @@ document.addEventListener('DOMContentLoaded', function(){
   checkSession() // Verifier si session Supabase active
 })
 </script>
+
+<!-- MODAL MODIFIER CLIENT -->
+<div id="modal-edit-client" class="modal-ov" onclick="if(event.target===this)closeModal('modal-edit-client')">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-top"><div class="modal-title">Modifier la fiche client</div><div class="modal-sub" id="edit-client-sub"></div></div>
+    <div class="modal-body">
+      <div class="f2">
+        <div class="fld"><label>Prénom *</label><input id="edit-fn" placeholder="Michel"></div>
+        <div class="fld"><label>Nom *</label><input id="edit-ln" placeholder="Renard"></div>
+      </div>
+      <div class="f2">
+        <div class="fld"><label>Email</label><input type="email" id="edit-em" placeholder="michel@mail.fr"></div>
+        <div class="fld"><label>Téléphone</label><input id="edit-tel" placeholder="06 XX XX XX XX"></div>
+      </div>
+      <div class="f2">
+        <div class="fld"><label>Ville</label><input id="edit-city" placeholder="Toulon"></div>
+        <div class="fld"><label>Surface (m²)</label><input type="number" id="edit-surface" placeholder="62"></div>
+      </div>
+      <div class="f2">
+        <div class="fld"><label>Prix d'achat (€)</label><input type="number" id="edit-purchase" placeholder="280000"></div>
+        <div class="fld"><label>Date d'acquisition</label><input type="date" id="edit-dacq"></div>
+      </div>
+      <div class="f2">
+        <div class="fld"><label>Adresse complète</label><input id="edit-adresse" placeholder="12 rue Victor Hugo, Toulon"></div>
+        <div class="fld"><label>Référence cadastrale</label><input id="edit-section" placeholder="Ex: 870H117 ou 870AB023"></div>
+      </div>
+      <div class="f2">
+        <div class="fld"><label>Date de naissance</label><input type="date" id="edit-ddn"></div>
+        <div class="fld"><label>Fin de bail</label><input id="edit-bail" placeholder="juin 2026"></div>
+      </div>
+      <div class="fld"><label>Notes</label><textarea id="edit-notes" rows="2" style="resize:vertical"></textarea></div>
+      <div class="form-actions">
+        <button class="btn-cancel" onclick="closeModal('modal-edit-client')">Annuler</button>
+        <button class="btn-ok" onclick="saveEditClient()">Enregistrer →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
