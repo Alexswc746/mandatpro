@@ -13,7 +13,7 @@ export default async function handler(req, res) {
   const surfNum = surface ? parseFloat(surface) : null
 
   try {
-    // Étape 1 — Géocoder l'adresse pour obtenir le code INSEE
+    // Géocoder l'adresse pour obtenir le code INSEE
     const geoRes = await fetch(
       `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(adresse)}&limit=1`
     )
@@ -32,46 +32,53 @@ export default async function handler(req, res) {
 
     console.log('Geocodé:', ville, codeInsee)
 
+    // Parser la référence cadastrale complète
+    // Formats acceptés : "870H117", "870H", "H117", "H", "870AB023", "AB"
+    let sectionLettre = null
+    let numeroParcelle = null
+
+    if (section_cadastrale && section_cadastrale.trim()) {
+      const raw = section_cadastrale.trim().toUpperCase()
+      // Extraire les lettres (section) et les chiffres finaux (numéro)
+      const match = raw.match(/([A-Z]+)(\d+)?$/)
+      if (match) {
+        sectionLettre = match[1]           // ex: "H" ou "AB"
+        numeroParcelle = match[2] || null  // ex: "117" ou null
+      }
+      console.log(`Référence cadastrale: "${raw}" → section="${sectionLettre}" numéro="${numeroParcelle}"`)
+    }
+
     let transactions = []
     let methode = ''
 
-    // Priorité 1 : Section cadastrale (ultra précis)
-    if (section_cadastrale && section_cadastrale.trim()) {
-      const section = section_cadastrale.trim().toUpperCase()
-      console.log('Recherche par section cadastrale:', section, 'commune:', codeInsee)
+    const headers = {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`
+    }
 
-      const url = `${SUPABASE_URL}/rest/v1/dvf_transactions?code_insee=eq.${codeInsee}&section_cadastrale=eq.${section}&type_local=eq.${encodeURIComponent(type_local)}&order=date_mutation.desc&limit=100`
-      const dvfRes = await fetch(url, {
-        headers: {
-          'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`
-        }
-      })
-      const data = await dvfRes.json()
+    // Niveau 1 : Section cadastrale exacte (commune + section)
+    if (sectionLettre) {
+      const url = `${SUPABASE_URL}/rest/v1/dvf_transactions?code_insee=eq.${codeInsee}&section_cadastrale=eq.${sectionLettre}&type_local=eq.${encodeURIComponent(type_local)}&order=date_mutation.desc&limit=100`
+      const r = await fetch(url, { headers })
+      const data = await r.json()
       if (data && data.length >= 3) {
         transactions = data
-        methode = `Section ${section}`
-        console.log('Section cadastrale trouvée:', transactions.length, 'ventes')
+        methode = `Section ${sectionLettre}`
+        console.log(`Niveau 1 (section ${sectionLettre}): ${data.length} ventes`)
       } else {
-        console.log('Pas assez de ventes pour section', section, '— élargissement à la commune')
+        console.log(`Niveau 1 (section ${sectionLettre}): seulement ${data?.length || 0} ventes — élargissement`)
       }
     }
 
-    // Priorité 2 : Toute la commune (code INSEE)
+    // Niveau 2 : Commune entière
     if (transactions.length < 3) {
-      console.log('Recherche par commune:', codeInsee)
       const url = `${SUPABASE_URL}/rest/v1/dvf_transactions?code_insee=eq.${codeInsee}&type_local=eq.${encodeURIComponent(type_local)}&order=date_mutation.desc&limit=100`
-      const dvfRes = await fetch(url, {
-        headers: {
-          'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`
-        }
-      })
-      const data = await dvfRes.json()
+      const r = await fetch(url, { headers })
+      const data = await r.json()
       if (data && data.length >= 3) {
         transactions = data
         methode = `Commune ${ville}`
-        console.log('Commune trouvée:', transactions.length, 'ventes')
+        console.log(`Niveau 2 (commune ${codeInsee}): ${data.length} ventes`)
       }
     }
 
@@ -83,7 +90,7 @@ export default async function handler(req, res) {
       })
     }
 
-    // Filtrer par surface similaire si disponible (±40%)
+    // Filtrage par surface similaire (±40%) si disponible
     let filtered = transactions
     if (surfNum) {
       const avecSurface = transactions.filter(t =>
@@ -92,11 +99,11 @@ export default async function handler(req, res) {
       )
       if (avecSurface.length >= 3) {
         filtered = avecSurface
-        console.log('Filtrage surface ±40%:', filtered.length, 'ventes retenues')
+        console.log(`Filtrage surface ±40% (${Math.round(surfNum*0.6)}–${Math.round(surfNum*1.4)}m²): ${filtered.length} ventes retenues`)
       }
     }
 
-    // Calculer prix médian au m²
+    // Prix médian au m²
     const prixM2List = filtered
       .map(t => t.prix_m2)
       .filter(p => p && p > 500 && p < 25000)
@@ -109,7 +116,7 @@ export default async function handler(req, res) {
     const avgM2 = Math.round(prixM2List[Math.floor(prixM2List.length / 2)])
     const est = surfNum ? Math.round(avgM2 * surfNum) : null
 
-    console.log(`DVF [${methode}]: ${avgM2}€/m² — ${prixM2List.length} ventes`)
+    console.log(`DVF [${methode}]: ${avgM2}€/m² — ${prixM2List.length} ventes comparables`)
 
     return res.status(200).json({
       dvf: {
