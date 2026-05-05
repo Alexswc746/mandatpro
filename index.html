@@ -3598,25 +3598,52 @@ function renderDashboard(){
   // Opportunites
   const opps = el('dash-opportunites')
   if(opps){
-    const topClients = clients.filter(c=>c.score>=60).sort((a,b)=>b.score-a.score).slice(0,3)
+    // Trier par plus-value DVF décroissante, puis par score
+    const clientsAvecDvf = clients
+      .filter(c => c.dvf && c.dvf.gainPct > 0)
+      .sort((a,b) => b.dvf.gainPct - a.dvf.gainPct)
+    
+    const alertes = clientsAvecDvf.filter(c => c.dvf.gainPct >= 10)
+    const topClients = clientsAvecDvf.slice(0, 5)
+
     if(topClients.length === 0){ opps.innerHTML=''; return }
-    opps.innerHTML = '<div style="background:var(--ink);border-radius:var(--r2);overflow:hidden">'
-      +'<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.08)">'
-      +'<div style="font-size:13px;font-weight:600;color:#fff">A ne pas rater ce mois-ci</div>'
-      +'<div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:2px">Clients a fort potentiel de mandat</div>'
+
+    // Bannière alerte si des clients dépassent +10%
+    let banniereHTML = ''
+    if(alertes.length > 0){
+      banniereHTML = '<div style="background:var(--hot);border-radius:var(--r2);padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;gap:12px">'
+        +'<div style="width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.6);animation:pulse 1.5s infinite;flex-shrink:0"></div>'
+        +'<div style="flex:1"><div style="font-size:13px;font-weight:700;color:#fff">'+alertes.length+' client'+(alertes.length>1?'s':'')+' avec plus-value > +10% — à contacter maintenant</div>'
+        +'<div style="font-size:11px;color:rgba(255,255,255,.7);margin-top:2px">'+alertes.slice(0,3).map(c=>c.fn+' '+c.ln+' (+'+c.dvf.gainPct+'%)').join(' · ')+'</div>'
+        +'</div>'
+        +'<button onclick="sortClients(\'gainPct\');show(\'clients\')" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);color:#fff;padding:6px 14px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">Voir tous →</button>'
+        +'</div>'
+    }
+
+    opps.innerHTML = banniereHTML
+      +'<div style="background:var(--ink);border-radius:var(--r2);overflow:hidden">'
+      +'<div style="padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between">'
+      +'<div><div style="font-size:13px;font-weight:600;color:#fff">Clients triés par plus-value DVF</div>'
+      +'<div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:2px">Du meilleur potentiel de mandat au plus faible</div></div>'
+      +'<button onclick="sortClients(\'gainPct\');show(\'clients\')" style="background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.6);padding:5px 12px;border-radius:7px;font-size:11px;cursor:pointer">Voir tous →</button>'
       +'</div>'
       +topClients.map((c,i) => {
-        const gainPct = c.avis ? +(((c.avis.prix-c.purchase)/c.purchase)*100).toFixed(1) : (c.dvf?c.dvf.gainPct:0)
+        const gainPct = c.dvf.gainPct
+        const gainEur = c.dvf.gainEur
         const isLast = i===topClients.length-1
+        const isAlerte = gainPct >= 10
+        const couleurGain = gainPct>=20?'#E87070':gainPct>=10?'var(--mint)':'rgba(255,255,255,.4)'
+        const bgGain = gainPct>=20?'rgba(192,57,43,.25)':gainPct>=10?'rgba(82,183,136,.2)':'rgba(255,255,255,.08)'
         return '<div onclick="openDetClient(\''+c.id+'\')" style="display:flex;align-items:center;gap:12px;padding:14px 18px;'+(isLast?'':'border-bottom:1px solid rgba(255,255,255,.06);')+'cursor:pointer;transition:background .15s" onmouseover="this.style.background=\'rgba(255,255,255,.04)\'" onmouseout="this.style.background=\'transparent\'">'
-          +'<div class="c-av av-cool" style="flex-shrink:0">'+c.init+'</div>'
-          +'<div style="flex:1"><div style="font-size:13px;font-weight:600;color:#fff">'+c.fn+' '+c.ln+'</div>'
+          +'<div style="width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;background:rgba(255,255,255,.1);color:#fff;flex-shrink:0">'+(i+1)+'</div>'
+          +'<div style="flex:1">'
+          +'<div style="font-size:13px;font-weight:600;color:#fff">'+c.fn+' '+c.ln+'</div>'
           +'<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:4px">'
-          +(gainPct>10?'<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:100px;background:rgba(82,183,136,.2);color:var(--mint)">+'+gainPct+'% de valeur</span>':'')
-          +(c.finBail?'<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:100px;background:rgba(192,57,43,.25);color:#E87070">Fin de bail '+c.finBail+'</span>':'')
-          +'<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:100px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.6)">Score '+c.score+'</span>'
+          +'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:100px;background:'+bgGain+';color:'+couleurGain+'">+'+gainPct+'% — '+Math.round(gainEur/1000)+'k€</span>'
+          +(c.finBail?'<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:100px;background:rgba(192,57,43,.25);color:#E87070">Fin bail '+c.finBail+'</span>':'')
+          +'<span style="font-size:10px;padding:2px 8px;border-radius:100px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.5)">Score '+c.score+'</span>'
           +'</div></div>'
-          +'<button onclick="event.stopPropagation();show(\'clients\');setTimeout(()=>{openDetClient(\''+c.id+'\');openMsg(\'client\',\''+c.id+'\')},50)" style="background:var(--mint);color:var(--green);border:none;border-radius:8px;padding:7px 14px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">Envoyer message</button>'
+          +'<button onclick="event.stopPropagation();show(\'clients\');setTimeout(()=>{openDetClient(\''+c.id+'\');openMsg(\'client\',\''+c.id+'\')},50)" style="background:var(--mint);color:var(--green);border:none;border-radius:8px;padding:7px 14px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">Message →</button>'
           +'</div>'
       }).join('')
       +'</div>'
