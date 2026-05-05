@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   const surfNum = surface ? parseFloat(surface) : null
 
   try {
-    // Étape 1 — Géocoder pour obtenir code INSEE
+    // Géocoder pour obtenir code INSEE
     const geoRes = await fetch(
       `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(adresse)}&limit=1`
     )
@@ -26,8 +26,6 @@ export default async function handler(req, res) {
     const codePostal = feature.properties.postcode
     const codeInsee = feature.properties.citycode
 
-    console.log('Geocodé:', ville, codeInsee)
-
     // Parser la référence cadastrale : "870H117" → section=H, numero=117
     let sectionLettre = null
     let numeroParcelle = null
@@ -39,62 +37,81 @@ export default async function handler(req, res) {
         sectionLettre = match[1]
         numeroParcelle = match[2] || null
       }
-      console.log(`Référence: "${raw}" → section="${sectionLettre}" numéro="${numeroParcelle}"`)
+    }
+
+    // Fonction pour récupérer TOUTES les pages de l'API Cerema
+    async function fetchAllPages(baseUrl) {
+      let allResults = []
+      let page = 1
+      let hasMore = true
+
+      while (hasMore) {
+        const url = `${baseUrl}&page=${page}&nb_resultats=500`
+        const r = await fetch(url)
+        if (!r.ok) break
+        const data = await r.json()
+        
+        if (!data.results || data.results.length === 0) {
+          hasMore = false
+        } else {
+          allResults = allResults.concat(data.results)
+          // Si on a moins que la limite demandée, c'est la dernière page
+          if (data.results.length < 500 || !data.next) {
+            hasMore = false
+          } else {
+            page++
+          }
+        }
+        // Sécurité : max 10 pages
+        if (page > 10) hasMore = false
+      }
+
+      return allResults
     }
 
     let mutations = []
     let methode = ''
 
-    // Priorité 1 : API DVF officielle par parcelle exacte
+    // Priorité 1 : Parcelle exacte — toutes les ventes
     if (sectionLettre && numeroParcelle) {
-      const apiUrl = `https://apidf-preprod.cerema.fr/dvf_opendata/mutations/?section=${sectionLettre}&numero_plan=${numeroParcelle}&code_insee=${codeInsee}&nb_resultats=50`
-      console.log('API DVF parcelle:', apiUrl)
+      const baseUrl = `https://apidf-preprod.cerema.fr/dvf_opendata/mutations/?section=${sectionLettre}&numero_plan=${numeroParcelle}&code_insee=${codeInsee}`
+      console.log('Recherche parcelle exacte:', baseUrl)
       try {
-        const r = await fetch(apiUrl)
-        const data = await r.json()
-        if (data.results?.length >= 1) {
-          mutations = data.results
+        const results = await fetchAllPages(baseUrl)
+        if (results.length >= 1) {
+          mutations = results
           methode = `Parcelle ${sectionLettre}${numeroParcelle}`
-          console.log(`Parcelle exacte: ${mutations.length} ventes`)
+          console.log(`Parcelle exacte: ${mutations.length} ventes TOUTES récupérées`)
         }
-      } catch(e) { console.log('API parcelle erreur:', e.message) }
+      } catch(e) { console.log('Erreur parcelle:', e.message) }
     }
 
-    // Priorité 2 : API DVF par section
+    // Priorité 2 : Section entière — toutes les ventes
     if (mutations.length < 3 && sectionLettre) {
-      const apiUrl = `https://apidf-preprod.cerema.fr/dvf_opendata/mutations/?section=${sectionLettre}&code_insee=${codeInsee}&nb_resultats=100`
-      console.log('API DVF section:', apiUrl)
+      const baseUrl = `https://apidf-preprod.cerema.fr/dvf_opendata/mutations/?section=${sectionLettre}&code_insee=${codeInsee}`
+      console.log('Recherche section:', baseUrl)
       try {
-        const r = await fetch(apiUrl)
-        const data = await r.json()
-        if (data.results?.length >= 3) {
-          mutations = data.results
+        const results = await fetchAllPages(baseUrl)
+        if (results.length >= 3) {
+          mutations = results
           methode = `Section ${sectionLettre}`
-          console.log(`Section: ${mutations.length} ventes`)
+          console.log(`Section: ${mutations.length} ventes TOUTES récupérées`)
         }
-      } catch(e) { console.log('API section erreur:', e.message) }
+      } catch(e) { console.log('Erreur section:', e.message) }
     }
 
-    // Priorité 3 : Notre base Supabase par commune
+    // Priorité 3 : Commune entière
     if (mutations.length < 3) {
-      const SUPABASE_URL = process.env.SUPABASE_URL || 'https://xzkzzxgkoxipmkbxynfq.supabase.co'
-      const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY
-      const url = `${SUPABASE_URL}/rest/v1/dvf_transactions?code_insee=eq.${codeInsee}&type_local=eq.${encodeURIComponent(type_local)}&order=date_mutation.desc&limit=100`
-      const r = await fetch(url, {
-        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-      })
-      const data = await r.json()
-      if (data?.length >= 3) {
-        // Convertir format Supabase vers format API
-        mutations = data.map(t => ({
-          valeur_fonciere: t.valeur_fonciere,
-          surface_reelle_bati: t.surface_reelle_bati,
-          date_mutation: t.date_mutation,
-          prix_m2: t.prix_m2
-        }))
-        methode = `Commune ${ville}`
-        console.log(`Commune: ${mutations.length} ventes`)
-      }
+      const baseUrl = `https://apidf-preprod.cerema.fr/dvf_opendata/mutations/?code_insee=${codeInsee}&type_local=${encodeURIComponent(type_local)}`
+      console.log('Recherche commune:', baseUrl)
+      try {
+        const results = await fetchAllPages(baseUrl)
+        if (results.length >= 3) {
+          mutations = results
+          methode = `Commune ${ville}`
+          console.log(`Commune: ${mutations.length} ventes TOUTES récupérées`)
+        }
+      } catch(e) { console.log('Erreur commune:', e.message) }
     }
 
     if (mutations.length < 3) {
@@ -105,12 +122,17 @@ export default async function handler(req, res) {
       })
     }
 
-    // Filtrage par surface ±40%
-    let filtered = mutations
+    // Filtrer par type de bien
+    let filtered = mutations.filter(t => 
+      !type_local || t.type_local === type_local || !t.type_local
+    )
+    if (filtered.length < 3) filtered = mutations
+
+    // Filtrer par surface ±40% si disponible
     if (surfNum) {
-      const avecSurface = mutations.filter(t => {
-        const s = t.surface_reelle_bati || t.surface_bati
-        return s >= surfNum * 0.6 && s <= surfNum * 1.4
+      const avecSurface = filtered.filter(t => {
+        const s = t.surface_reelle_bati
+        return s && s >= surfNum * 0.6 && s <= surfNum * 1.4
       })
       if (avecSurface.length >= 3) {
         filtered = avecSurface
@@ -118,9 +140,15 @@ export default async function handler(req, res) {
       }
     }
 
-    // Prix médian au m²
+    // Calculer prix m² pour chaque vente
     const prixM2List = filtered
-      .map(t => t.prix_m2 || (t.valeur_fonciere && t.surface_reelle_bati ? Math.round(t.valeur_fonciere / t.surface_reelle_bati) : null))
+      .map(t => {
+        if (t.prix_m2) return t.prix_m2
+        if (t.valeur_fonciere && t.surface_reelle_bati) {
+          return Math.round(t.valeur_fonciere / t.surface_reelle_bati)
+        }
+        return null
+      })
       .filter(p => p && p > 500 && p < 25000)
       .sort((a, b) => a - b)
 
@@ -128,23 +156,26 @@ export default async function handler(req, res) {
       return res.status(200).json({ error: 'Données insuffisantes', dvf: null })
     }
 
-    const avgM2 = Math.round(prixM2List[Math.floor(prixM2List.length / 2)])
-    const est = surfNum ? Math.round(avgM2 * surfNum) : null
+    // Prix médian sur TOUTES les ventes — stable et reproductible
+    const medianM2 = Math.round(prixM2List[Math.floor(prixM2List.length / 2)])
+    const est = surfNum ? Math.round(medianM2 * surfNum) : null
 
-    console.log(`DVF [${methode}]: ${avgM2}€/m² — ${prixM2List.length} ventes`)
+    console.log(`DVF FINAL [${methode}]: ${medianM2}€/m² médian sur ${prixM2List.length} ventes`)
 
     return res.status(200).json({
       dvf: {
-        avgM2, medianM2: avgM2, est,
+        avgM2: medianM2,
+        medianM2,
+        est,
         comp: prixM2List.length,
         methode,
         conf: prixM2List.length >= 10 ? 'bonne' : 'indicative',
         date: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
         samples: filtered.slice(0, 5).map(t => ({
           d: t.date_mutation,
-          s: t.surface_reelle_bati || t.surface_bati,
+          s: t.surface_reelle_bati,
           p: t.valeur_fonciere,
-          m: t.prix_m2 || Math.round(t.valeur_fonciere / (t.surface_reelle_bati || 1))
+          m: t.prix_m2 || (t.valeur_fonciere && t.surface_reelle_bati ? Math.round(t.valeur_fonciere / t.surface_reelle_bati) : null)
         }))
       },
       geo: { lat, lng, ville, codePostal, codeInsee }
